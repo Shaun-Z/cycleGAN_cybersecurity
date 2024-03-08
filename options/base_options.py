@@ -13,7 +13,7 @@ class BaseOptions():
         """Define the common options that are used in both training and test."""
         # basic parameters
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
-        parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+        parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
         parser.add_argument("--n_residual_blocks", type=int, default=9, help="number of residual blocks in generator")
         parser.add_argument("--lambda_cyc", type=float, default=10.0, help="cycle loss weight")
         parser.add_argument("--lambda_id", type=float, default=5.0, help="identity loss weight")
