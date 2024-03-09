@@ -139,11 +139,20 @@ if __name__ == '__main__':
 
 
 
-
     # ----------
     #  Training
     # ----------
-    device = torch.device('cuda:{}'.format(opt.gpu_ids[0])) if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
+    device = torch.device('cuda') if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
+    print(f"Device: {device}")
+    
+    G_AB= nn.DataParallel(G_AB)
+    G_BA= nn.DataParallel(G_BA)
+    D_A= nn.DataParallel(D_A)
+    D_B= nn.DataParallel(D_B)
+    criterion_GAN= nn.DataParallel(criterion_GAN)
+    criterion_cycle= nn.DataParallel(criterion_cycle)
+    criterion_identity= nn.DataParallel(criterion_identity)
+
     prev_time = time.time()
     for epoch in range(opt.epoch, opt.n_epochs):
         for i, batch in enumerate(dataloader):
@@ -157,8 +166,8 @@ if __name__ == '__main__':
             # Adversarial ground truths
             # valid = Variable(Tensor(np.ones((real_A.size(0), *D_A.output_shape))), requires_grad=False)
             # fake = Variable(Tensor(np.zeros((real_A.size(0), *D_A.output_shape))), requires_grad=False)
-            valid = torch.tensor(np.ones((real_A.size(0), *D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
-            fake = torch.tensor(np.zeros((real_A.size(0), *D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
+            valid = torch.tensor(np.ones((real_A.size(0), *D_A.module.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
+            fake = torch.tensor(np.zeros((real_A.size(0), *D_A.module.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
 
             # ------------------
             #  Train Generators
@@ -194,7 +203,7 @@ if __name__ == '__main__':
             # Total loss
             loss_G = loss_GAN + opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity
 
-            loss_G.backward()
+            loss_G.sum().backward()
             optimizer_G.step()
 
             # -----------------------
@@ -211,7 +220,7 @@ if __name__ == '__main__':
             # Total loss
             loss_D_A = (loss_real + loss_fake) / 2
 
-            loss_D_A.backward()
+            loss_D_A.sum().backward()
             optimizer_D_A.step()
 
             # -----------------------
@@ -228,7 +237,7 @@ if __name__ == '__main__':
             # Total loss
             loss_D_B = (loss_real + loss_fake) / 2
 
-            loss_D_B.backward()
+            loss_D_B.sum().backward()
             optimizer_D_B.step()
 
             loss_D = (loss_D_A + loss_D_B) / 2
@@ -251,11 +260,11 @@ if __name__ == '__main__':
                     opt.n_epochs,
                     i,
                     len(dataloader),
-                    loss_D.item(),
-                    loss_G.item(),
-                    loss_GAN.item(),
-                    loss_cycle.item(),
-                    loss_identity.item(),
+                    loss_D.sum().item(),
+                    loss_G.sum().item(),
+                    loss_GAN.sum().item(),
+                    loss_cycle.sum().item(),
+                    loss_identity.sum().item(),
                     time_left,
                 )
             )

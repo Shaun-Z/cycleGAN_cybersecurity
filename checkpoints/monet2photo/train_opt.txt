@@ -1,12 +1,12 @@
 ----------------- Options ---------------
                        b1: 0.5                           
                        b2: 0.999                         
-               batch_size: 5                             
+               batch_size: 90                            	[default: 5]
                  channels: 3                             
-      checkpoint_interval: 1                             	[default: 10]
+      checkpoint_interval: 10                            
           checkpoints_dir: ./checkpoints                 
              dataset_name: monet2photo                   
-              decay_epoch: 50                            
+              decay_epoch: 100                           
                     epoch: 0                             
                   gpu_ids: 0                             
                img_height: 256                           
@@ -16,7 +16,7 @@
                 lambda_id: 5.0                           
                        lr: 0.0002                        
                     n_cpu: 4                             
-                 n_epochs: 100                           
+                 n_epochs: 200                           
         n_residual_blocks: 9                             
                      name: monet2photo                   	[default: experiment_name]
                     phase: train                         
