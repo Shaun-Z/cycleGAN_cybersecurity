@@ -11,3 +11,6 @@
 *.jfif
 *.webp
 *.svg
+
+# Tabular files
+*.csv
