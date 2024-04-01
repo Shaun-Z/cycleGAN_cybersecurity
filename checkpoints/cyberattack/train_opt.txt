@@ -5,7 +5,7 @@
                  channels: 3                             
       checkpoint_interval: 10                            
           checkpoints_dir: ./checkpoints                 
-             dataset_name: monet2photo                   
+             dataset_name: cyber                         	[default: monet2photo]
               decay_epoch: 100                           
                     epoch: 0                             
                   gpu_ids: 0                             
@@ -18,7 +18,7 @@
                     n_cpu: 4                             
                  n_epochs: 200                           
         n_residual_blocks: 9                             
-                     name: monet2photo                   	[default: experiment_name]
+                     name: cyberattack                   	[default: experiment_name]
                     phase: train                         
           sample_interval: 100                           
                    suffix:                               

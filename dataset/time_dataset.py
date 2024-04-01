@@ -19,10 +19,19 @@ class TsDataset(Dataset):
         group_normal = groups.get_group('Normal')
         groups_abnormal = itertools.islice(df.groupby(df.index, sort=False), 1, None)
 
-        data = torch.from_numpy(np.array([group[1] for group in groups_abnormal])).permute(0, 2, 1).float()
+        data_normal = torch.from_numpy(group_normal.values).permute(1, 0).float()
+        data_abnormal = torch.from_numpy(np.array([group[1] for group in groups_abnormal])).permute(2, 0, 1).float()
 
-        self.data = self.normalize(data) if normalize else data
-        self.seq_len = data.size(2)
+        len1, len2 = data_normal.size(1), data_abnormal.size(2)
+
+        min_len = min(len1, len2)
+
+        data_normal = data_normal[:, :min_len]  # Truncate the longer sequence
+        data_abnormal = data_abnormal[:, :, :min_len]
+
+        self.data_abnormal = self.normalize(data_abnormal) if normalize else data_abnormal
+        self.data_normal = self.normalize(data_normal) if normalize else data_normal
+        # self.seq_len = data_abnormal.size(2)
         
         #Estimates distribution parameters of deltas (Gaussian) from normalized data
         # original_deltas = data[:, -1] - data[:, 0]
@@ -34,10 +43,10 @@ class TsDataset(Dataset):
         # self.delta_max, self.delta_min = deltas.max(), deltas.min()
 
     def __len__(self):
-        return len(self.data)
+        return max(len(self.data_normal), len(self.data_abnormal))
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        return {"Normal": self.data_normal[idx], "Abnormal": self.data_abnormal[:,0][idx]}
 
     def normalize(self, x):
         """Normalize input in [-1,1] range, saving statics for denormalization"""
@@ -62,5 +71,4 @@ if __name__ == "__main__":
     from pathlib import Path
     datapath = Path('./data/CaseI-Attacks without any change.csv')
     dataset = TsDataset(datapath)
-    print(f"Successfuly loaded dataset with {dataset.data.size(1)} samples of length {dataset.seq_len}")
-    print(f"Size: {dataset.data.size()}")
+    print(f"Successfuly loaded dataset with Normal:{dataset.data_normal.size()}|Abnormal:{dataset.data_abnormal.size()}.")

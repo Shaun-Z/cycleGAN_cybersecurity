@@ -109,9 +109,10 @@ class LSTMGenerator(nn.Module):
         self.linear = nn.Sequential(nn.Linear(hidden_dim, out_dim), nn.Tanh())
 
     def forward(self, input):
+        device = input.device # Get input data's device
         batch_size, seq_len = input.size(0), input.size(1)
-        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
-        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
 
         recurrent_features, _ = self.lstm(input, (h_0, c_0))
         outputs = self.linear(recurrent_features.contiguous().view(batch_size*seq_len, self.hidden_dim))
@@ -172,10 +173,13 @@ class LSTMDiscriminator(nn.Module):
         self.lstm = nn.LSTM(in_dim, hidden_dim, n_layers, batch_first=True)
         self.linear = nn.Sequential(nn.Linear(hidden_dim, 1), nn.Sigmoid())
 
+        self.output_shape = in_dim
+
     def forward(self, input):
+        device = input.device
         batch_size, seq_len = input.size(0), input.size(1)
-        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
-        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
+        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
 
         recurrent_features, _ = self.lstm(input, (h_0, c_0))
         outputs = self.linear(recurrent_features.contiguous().view(batch_size*seq_len, self.hidden_dim))
