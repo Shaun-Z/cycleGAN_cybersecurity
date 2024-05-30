@@ -10,7 +10,7 @@ import matplotlib.cm as cm
 from matplotlib import pyplot as plt
 
 # %%
-data_dir = os.path.join('.', 'data', 'Casel_attack')
+data_dir = os.path.join('.', 'data', 'Casel_attack', 'Test')
 csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
 
 # %%
