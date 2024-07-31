@@ -130,9 +130,11 @@ class Up_1D(nn.Module):
         diffY = x2.size()[2] - x1.size()[2]
         # diffX = x2.size()[3] - x1.size()[3]
 
-        # x1 = F.pad(x1, [diffY // 2, diffY - diffY // 2])
-        x2 = x2[:, :, diffY//2:-diffY//2]
-        
+        if diffY != 0:
+            x2 = x2[:, :, diffY//2:-diffY//2]
+        else:
+            x2= x2
+
         x = torch.cat([x2, x1], dim=1)
 
         return self.conv(x)

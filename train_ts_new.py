@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torch.autograd import Variable
 
+from unet.unet_model import *
 from models import *
 from datasets import *
 from utils import *
@@ -21,15 +22,37 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-from dataset.time_dataset import TsDataset
+from dataset.time_dataset import NewTsDataset
 from pathlib import Path
 
 from options.train_options import TrainOptions
+
+
+# def sample_images(batches_done):
+#     """Saves a generated sample from the test set"""
+#     imgs = next(iter(val_dataloader))
+#     G_AB.eval()
+#     G_BA.eval()
+#     real_A = Variable(imgs["A"].type(Tensor))
+#     fake_B = G_AB(real_A)
+#     real_B = Variable(imgs["B"].type(Tensor))
+#     fake_A = G_BA(real_B)
+#     # Arange images along x-axis
+#     real_A = make_grid(real_A, nrow=5, normalize=True)
+#     real_B = make_grid(real_B, nrow=5, normalize=True)
+#     fake_A = make_grid(fake_A, nrow=5, normalize=True)
+#     fake_B = make_grid(fake_B, nrow=5, normalize=True)
+#     # Arange images along y-axis
+#     image_grid = torch.cat((real_A, fake_B, real_B, fake_A), 1)
+#     save_image(image_grid, "images/%s/%s.png" % (opt.dataset_name, batches_done), normalize=False)
 
 if __name__ == '__main__':
 
     opt = TrainOptions().parse()
     print(opt)
+
+    device = torch.device('cuda') if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
+    print(f"Device: {device}")
 
     # # Create sample and checkpoint directories
     os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
@@ -37,7 +60,7 @@ if __name__ == '__main__':
 
     # Dataset loader
     datapath = Path('data')
-    dataset = TsDataset(datapath/'CaseI-Attacks without any change.csv')
+    dataset = NewTsDataset(datapath/'CaseI-Attacks without any change.csv')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size,
                                          shuffle=True, num_workers=4)
     print("The size of the dataset is: ", dataset.data_normal.size(), dataset.data_abnormal.size())
@@ -49,21 +72,15 @@ if __name__ == '__main__':
 
     cuda = torch.cuda.is_available()
 
-    # input_shape = (opt.channels, opt.img_height, opt.img_width)
+    normal_feature_len = dataset.data_normal.size(2)
+    abnormal_feature_len = dataset.data_abnormal.size(2)
+    normal_seq_len = dataset.data_normal.size(1)
+    abnormal_seq_len = dataset.data_abnormal.size(1)
 
-    # Initialize generator and discriminator
-    # G_AB = GeneratorResNet(input_shape, opt.n_residual_blocks)
-    # G_BA = GeneratorResNet(input_shape, opt.n_residual_blocks)
-    # D_A = Discriminator(input_shape)
-    # D_B = Discriminator(input_shape)
-    normal_dim = dataset.data_normal.size(1)
-    abnormal_dim = dataset.data_abnormal.size(2)
-    in_dim = dataset.__len__()
-
-    G_AB = LSTMGenerator(normal_dim, normal_dim)
-    G_BA = LSTMGenerator(abnormal_dim, abnormal_dim)
-    D_A = LSTMDiscriminator(normal_dim)
-    D_B = LSTMDiscriminator(abnormal_dim)
+    G_AB = LSTMUnetGenerator(opt.batch_size, normal_seq_len, normal_feature_len, device=device)
+    G_BA = LSTMUnetGenerator(opt.batch_size, abnormal_seq_len, abnormal_feature_len, device=device)
+    D_A = LSTMDiscriminator(normal_feature_len)
+    D_B = LSTMDiscriminator(abnormal_feature_len)
 
     if cuda:
         G_AB = G_AB.cuda()
@@ -81,11 +98,12 @@ if __name__ == '__main__':
         D_A.load_state_dict(torch.load("saved_models/%s/D_A_%d.pth" % (opt.dataset_name, opt.epoch)))
         D_B.load_state_dict(torch.load("saved_models/%s/D_B_%d.pth" % (opt.dataset_name, opt.epoch)))
     else:
+        
         # Initialize weights
-        G_AB.apply(weights_init_normal)
+       ''' G_AB.apply(weights_init_normal)
         G_BA.apply(weights_init_normal)
         D_A.apply(weights_init_normal)
-        D_B.apply(weights_init_normal)
+        D_B.apply(weights_init_normal)'''
 
     # Optimizers
     optimizer_G = torch.optim.Adam(
@@ -140,8 +158,6 @@ if __name__ == '__main__':
     # ----------
     #  Training
     # ----------
-    device = torch.device('cuda') if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
-    print(f"Device: {device}")
 
     prev_time = time.time()
     for epoch in range(opt.epoch, opt.n_epochs):
@@ -150,8 +166,8 @@ if __name__ == '__main__':
             # Set model input
             # real_A = Variable(batch["A"].type(Tensor))
             # real_B = Variable(batch["B"].type(Tensor))
-            real_A = batch["Normal"].unsqueeze(1).clone().detach().to(device)
-            real_B = batch["Abnormal"].unsqueeze(1).clone().detach().to(device)
+            real_A = batch["Normal"].clone().detach().to(device)
+            real_B = batch["Abnormal"].clone().detach().to(device)
 
             # Adversarial ground truths
             # valid = Variable(Tensor(np.ones((real_A.size(0), *D_A.output_shape))), requires_grad=False)
@@ -176,6 +192,8 @@ if __name__ == '__main__':
 
             # GAN loss
             fake_B = G_AB(real_A)
+            print(f"\033[92m{real_A.size()}, {real_B.size()}, {fake_B.size()}\033[0m")
+
             loss_GAN_AB = criterion_GAN(D_B(fake_B), valid)
             fake_A = G_BA(real_B)
             loss_GAN_BA = criterion_GAN(D_A(fake_A), valid)

@@ -119,6 +119,41 @@ class LSTMGenerator(nn.Module):
         outputs = outputs.view(batch_size, seq_len, self.out_dim)
         return outputs
 
+class LSTMFullGenerator(nn.Module):
+    """An LSTM based generator. It expects a sequence of noise vectors as input.
+
+    Args:
+        in_dim: Input noise dimensionality
+        out_dim: Output dimensionality
+        n_layers: number of lstm layers
+        hidden_dim: dimensionality of the hidden layer of lstms
+
+    Input: sequence of shape (batch_size, seq_len, feature_num)
+    Output: sequence of shape (batch_size, seq_len, out_dim)
+    """
+    def __init__(self, seq_len, feature_len, n_layers=1, hidden_dim=256):
+    # def __init__(self, in_dim, out_dim, n_layers=1, hidden_dim=256):
+        super().__init__()
+        self.n_layers = n_layers
+        self.hidden_dim = hidden_dim
+        self.seq_len = seq_len
+        self.feature_len = feature_len  # The number of features in each time step
+        self.out_dim = feature_len
+
+        self.lstm = nn.LSTM(input_size=feature_len, hidden_size=hidden_dim, num_layers=n_layers, batch_first=True)
+        self.linear = nn.Sequential(nn.Linear(hidden_dim, feature_len), nn.Tanh())
+
+    def forward(self, input):
+        device = input.device # Get input data's device
+        batch_size, seq_len = input.size(0), input.size(1)
+        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+
+        recurrent_features, _ = self.lstm(input, (h_0, c_0))
+        outputs = self.linear(recurrent_features.contiguous().view(batch_size*seq_len, self.hidden_dim))
+        outputs = outputs.view(batch_size, seq_len, self.out_dim)
+        return outputs
+
 ##############################
 #        Discriminator
 ##############################
@@ -185,16 +220,52 @@ class LSTMDiscriminator(nn.Module):
         outputs = self.linear(recurrent_features.contiguous().view(batch_size*seq_len, self.hidden_dim))
         outputs = outputs.view(batch_size, seq_len, 1)
         return outputs
+    
+class LSTMFullDiscriminator(nn.Module):
+    """An LSTM based discriminator. It expects a sequence as input and outputs a probability for each element. 
+
+    Args:
+        in_dim: Input noise dimensionality
+        n_layers: number of lstm layers
+        hidden_dim: dimensionality of the hidden layer of lstms
+
+    Inputs: sequence of shape (batch_size, seq_len, in_dim)
+    Output: sequence of shape (batch_size, seq_len, 1)
+    """
+
+    def __init__(self, feature_len, n_layers=1, hidden_dim=256):
+        super().__init__()
+        self.n_layers = n_layers
+        self.hidden_dim = hidden_dim
+        self.feature_len = feature_len
+        self.output_shape = feature_len
+
+        self.lstm = nn.LSTM(feature_len, hidden_dim, n_layers, batch_first=True)
+        # self.linear = nn.Sequential(nn.Linear(hidden_dim, 1), nn.Sigmoid())
+        self.linear = nn.Sequential(nn.Linear(hidden_dim, feature_len), nn.Sigmoid())
+
+    def forward(self, input):
+        device = input.device
+        batch_size, seq_len = input.size(0), input.size(1)
+        h_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+        c_0 = torch.zeros(self.n_layers, batch_size, self.hidden_dim).to(device)
+
+        recurrent_features, _ = self.lstm(input, (h_0, c_0))
+
+        outputs = self.linear(recurrent_features.contiguous().view(batch_size*seq_len, self.hidden_dim))
+        # outputs = outputs.view(batch_size, seq_len, 1)
+        outputs = outputs.view(batch_size, seq_len, self.output_shape)
+        
+        return outputs
 
 if __name__ == "__main__":
-    batch_size = 16
-    seq_len = 32
-    noise_dim = 100
-    seq_dim = 4
+    batch_size = 33
+    seq_len = 576
+    feature_len = 15
 
-    gen = LSTMGenerator(noise_dim, seq_dim)
-    dis = LSTMDiscriminator(seq_dim)
-    noise = torch.randn(8, 16, noise_dim)
+    gen = LSTMFullGenerator(seq_len, feature_len)
+    dis = LSTMFullDiscriminator(feature_len)
+    noise = torch.randn(batch_size, seq_len, feature_len)
     gen_out = gen(noise)
     dis_out = dis(gen_out)
     

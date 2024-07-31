@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-from dataset.time_dataset import TsDataset
+from dataset.time_dataset import TsFinalDataset, TsModifiedDataset
 from pathlib import Path
 
 from options.train_options import TrainOptions
@@ -31,16 +31,19 @@ if __name__ == '__main__':
     opt = TrainOptions().parse()
     print(opt)
 
+    device = torch.device('cuda') if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
+    print(f"Device: {device}")
+
     # # Create sample and checkpoint directories
     os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
     os.makedirs("saved_models/%s" % opt.dataset_name, exist_ok=True)
 
     # Dataset loader
     datapath = Path('data')
-    dataset = TsDataset(datapath/'CaseI-Attacks without any change.csv')
+    dataset = TsFinalDataset(datapath/'CaseI-Attacks without any change.csv', noise_type='none')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size,
                                          shuffle=True, num_workers=4)
-    print("The size of the dataset is: ", dataset.data_normal.size(), dataset.data_abnormal.size())
+    print("The size of the dataset is: ", dataset.data_normal.size(), dataset.data_attacked.size())
 
     # Losses
     criterion_GAN = torch.nn.MSELoss()
@@ -49,21 +52,19 @@ if __name__ == '__main__':
 
     cuda = torch.cuda.is_available()
 
-    # input_shape = (opt.channels, opt.img_height, opt.img_width)
+    normal_seq_len = dataset.data_normal.size(1)
+    normal_feature_len = dataset.data_normal.size(2)
+    attacked_seq_len = dataset.data_attacked.size(1)
+    attacked_feature_len = dataset.data_attacked.size(2)
 
-    # Initialize generator and discriminator
-    # G_AB = GeneratorResNet(input_shape, opt.n_residual_blocks)
-    # G_BA = GeneratorResNet(input_shape, opt.n_residual_blocks)
-    # D_A = Discriminator(input_shape)
-    # D_B = Discriminator(input_shape)
-    normal_dim = dataset.data_normal.size(1)
-    abnormal_dim = dataset.data_abnormal.size(2)
-    in_dim = dataset.__len__()
+    print(f"Normal: [{normal_seq_len}, {normal_feature_len}]; Attacked: [{attacked_seq_len}, {attacked_feature_len}]")
 
-    G_AB = LSTMGenerator(normal_dim, normal_dim)
-    G_BA = LSTMGenerator(abnormal_dim, abnormal_dim)
-    D_A = LSTMDiscriminator(normal_dim)
-    D_B = LSTMDiscriminator(abnormal_dim)
+    # G_AB = LSTMFullGenerator(normal_seq_len, normal_feature_len)
+    # G_BA = LSTMFullGenerator(attacked_seq_len, attacked_feature_len)
+    G_AB = LSTMFullGenerator(normal_seq_len, normal_feature_len)
+    G_BA = LSTMFullGenerator(attacked_seq_len, attacked_feature_len)
+    D_A = LSTMFullDiscriminator(normal_feature_len)
+    D_B = LSTMFullDiscriminator(attacked_feature_len)
 
     if cuda:
         G_AB = G_AB.cuda()
@@ -81,11 +82,12 @@ if __name__ == '__main__':
         D_A.load_state_dict(torch.load("saved_models/%s/D_A_%d.pth" % (opt.dataset_name, opt.epoch)))
         D_B.load_state_dict(torch.load("saved_models/%s/D_B_%d.pth" % (opt.dataset_name, opt.epoch)))
     else:
+        
         # Initialize weights
-        G_AB.apply(weights_init_normal)
+       ''' G_AB.apply(weights_init_normal)
         G_BA.apply(weights_init_normal)
         D_A.apply(weights_init_normal)
-        D_B.apply(weights_init_normal)
+        D_B.apply(weights_init_normal)'''
 
     # Optimizers
     optimizer_G = torch.optim.Adam(
@@ -111,37 +113,9 @@ if __name__ == '__main__':
     fake_A_buffer = ReplayBuffer()
     fake_B_buffer = ReplayBuffer()
 
-    # Image transformations
-    # transforms_ = [
-    #     transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
-    #     transforms.RandomCrop((opt.img_height, opt.img_width)),
-    #     transforms.RandomHorizontalFlip(),
-    #     transforms.ToTensor(),
-    #     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    # ]
-
-    # Training data loader
-    # dataloader = DataLoader(
-    #     ImageDataset("./data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
-    #     batch_size=opt.batch_size,
-    #     shuffle=True,
-    #     num_workers=opt.n_cpu,
-    # )
-    
-    # # Test data loader
-    # val_dataloader = DataLoader(
-    #     ImageDataset("./data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
-    #     batch_size=5,
-    #     shuffle=True,
-    #     num_workers=1,
-    # )
-
-
     # ----------
     #  Training
     # ----------
-    device = torch.device('cuda') if opt.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
-    print(f"Device: {device}")
 
     prev_time = time.time()
     for epoch in range(opt.epoch, opt.n_epochs):
@@ -150,14 +124,14 @@ if __name__ == '__main__':
             # Set model input
             # real_A = Variable(batch["A"].type(Tensor))
             # real_B = Variable(batch["B"].type(Tensor))
-            real_A = batch["Normal"].unsqueeze(1).clone().detach().to(device)
-            real_B = batch["Abnormal"].unsqueeze(1).clone().detach().to(device)
+            real_A = batch["Normal"].clone().detach().to(device)
+            real_B = batch["Attacked"].clone().detach().to(device)
 
             # Adversarial ground truths
             # valid = Variable(Tensor(np.ones((real_A.size(0), *D_A.output_shape))), requires_grad=False)
             # fake = Variable(Tensor(np.zeros((real_A.size(0), *D_A.output_shape))), requires_grad=False)
-            valid = torch.tensor(np.ones((real_A.size(0), D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
-            fake = torch.tensor(np.zeros((real_A.size(0), D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
+            valid = torch.tensor(np.ones((real_A.size(0), real_A.size(1), D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
+            fake = torch.tensor(np.zeros((real_A.size(0), real_A.size(1), D_A.output_shape)), device=device, requires_grad=False, dtype=torch.float32)
 
             # ------------------
             #  Train Generators
@@ -176,6 +150,8 @@ if __name__ == '__main__':
 
             # GAN loss
             fake_B = G_AB(real_A)
+            # print(f"\033[92m{real_A.size()}, {real_B.size()}, {fake_B.size()}, {valid.size()}\033[0m")
+
             loss_GAN_AB = criterion_GAN(D_B(fake_B), valid)
             fake_A = G_BA(real_B)
             loss_GAN_BA = criterion_GAN(D_A(fake_A), valid)
